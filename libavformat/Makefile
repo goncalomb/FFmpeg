@@ -199,6 +199,7 @@ OBJS-$(CONFIG_FLAC_MUXER)                += flacenc.o flacenc_header.o \
 OBJS-$(CONFIG_FLIC_DEMUXER)              += flic.o
 OBJS-$(CONFIG_FLV_DEMUXER)               += flvdec.o
 OBJS-$(CONFIG_LIVE_FLV_DEMUXER)          += flvdec.o
+OBJS-$(CONFIG_LK7777_DEMUXER)            += lk7777.o
 OBJS-$(CONFIG_FLV_MUXER)                 += flvenc.o avc.o
 OBJS-$(CONFIG_FOURXM_DEMUXER)            += 4xm.o
 OBJS-$(CONFIG_FRAMECRC_MUXER)            += framecrcenc.o framehash.o
