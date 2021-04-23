@@ -8,7 +8,7 @@
 
 // TODO: some logs should probably be removed to avoid excessive av_log calls
 // TODO: demuxer should not crash with random input data / lost packets (test!)
-// TODO: address sync issues (pkt->pts pkt->dts ?)
+// TODO: improve sync... is fps detection good?
 
 // add decryption key here, this will be a command line option in the future
 const uint8_t key[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -73,6 +73,8 @@ static int lk7777_read_header(AVFormatContext *s)
     stv->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     stv->codecpar->codec_id = AV_CODEC_ID_H264;
     stv->need_parsing = AVSTREAM_PARSE_FULL_RAW;
+    stv->time_base.num = 1; // set time_base to ms (1/1000 s)
+    stv->time_base.den = 1000;
 
     // create audio stream (index 1)
     sta = avformat_new_stream(s, NULL);
@@ -82,6 +84,8 @@ static int lk7777_read_header(AVFormatContext *s)
     sta->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     sta->codecpar->codec_id = AV_CODEC_ID_MP2;
     sta->need_parsing = AVSTREAM_PARSE_FULL_RAW;
+    sta->time_base.num = 1; // set time_base to ms (1/1000 s)
+    sta->time_base.den = 1000;
 
     // init decrypt
     c->aes_decrypt = av_aes_alloc();
@@ -109,19 +113,23 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
 
     t = avio_r8(s->pb); // packet type
     sz = avio_rb32(s->pb) - 4; // packet size
-    ct = avio_rb32(s->pb);
+    ct = avio_rb32(s->pb); // timestamp (ms)
 
     switch (t) {
         case 0x00:
             av_log(s, AV_LOG_TRACE, "video data plain %d %d\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 0;
+            pkt->pts = ct;
+            pkt->dts = ct;
             break;
 
         case 0x80:
             av_log(s, AV_LOG_TRACE, "video data encrypted %d %d\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 0;
+            pkt->pts = ct;
+            pkt->dts = ct;
             lk7777_decrypt_packet(s, c->aes_decrypt, pkt);
             break;
 
@@ -129,6 +137,8 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
             av_log(s, AV_LOG_TRACE, "audio data encrypted %d %d\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 1;
+            pkt->pts = ct;
+            pkt->dts = ct;
             lk7777_decrypt_packet(s, c->aes_decrypt, pkt);
             break;
 
