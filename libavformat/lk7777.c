@@ -5,13 +5,11 @@
 #define LK7777_MAGIC_0 0x74
 #define LK7777_MAGIC_1 0x47
 #define LK7777_MAGIC_2 0x74
+#define LK7777_KEY_SIZE 16
 
 // TODO: some logs should probably be removed to avoid excessive av_log calls
 // TODO: demuxer should not crash with random input data / lost packets (test!)
 // TODO: improve sync... is fps detection good?
-
-// add decryption key here, this will be a command line option in the future
-const uint8_t key[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 static void lk7777_decrypt_packet(AVFormatContext *s, struct AVAES *aes_decrypt, AVPacket *pkt) {
     int sz = 1024;
@@ -37,6 +35,9 @@ static void lk7777_decrypt_packet(AVFormatContext *s, struct AVAES *aes_decrypt,
 }
 
 typedef struct LK7777Context {
+    const AVClass *class;
+    uint8_t *key;
+    int key_size;
     struct AVAES *aes_decrypt;
 } LK7777Context;
 
@@ -65,6 +66,12 @@ static int lk7777_read_header(AVFormatContext *s)
 
     av_log(s, AV_LOG_TRACE, "lk7777_read_header\n");
 
+    // process options
+    if (c->key_size != LK7777_KEY_SIZE) {
+        av_log(s, AV_LOG_ERROR, "Invalid key size %d expected %d\n", c->key_size, LK7777_KEY_SIZE);
+        return AVERROR(EINVAL);
+    }
+
     // create audio stream (index 0)
     stv = avformat_new_stream(s, NULL);
     if (!stv) {
@@ -92,7 +99,7 @@ static int lk7777_read_header(AVFormatContext *s)
     if (!c->aes_decrypt) {
         return AVERROR(ENOMEM);
     }
-    ret = av_aes_init(c->aes_decrypt, key, 128, 1);
+    ret = av_aes_init(c->aes_decrypt, c->key, 128, 1);
     if (ret < 0) {
         return ret;
     }
@@ -173,10 +180,7 @@ static int lk7777_read_seek(AVFormatContext *s, int stream_index, int64_t timest
 }
 
 static const AVOption lk7777_options[] = {
-    // TODO: enabling options right now will result in segmentation fault
-    //       it's something related to aes_decrypt on the context (priv_data)
-    //       i think options are saved on priv_data automatically
-    // TODO: add decryption key to options
+    {"key", "AES-128 key", offsetof(LK7777Context, key), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_DECODING_PARAM },
     {NULL}
 };
 
@@ -190,7 +194,7 @@ static const AVClass lk7777_class = {
 AVInputFormat ff_lk7777_demuxer = {
     .name           = "lk7777",
     .long_name      = NULL_IF_CONFIG_SMALL("LK 7777 Streaming"),
-    // .priv_class     = &lk7777_class, // TODO: enable options
+    .priv_class     = &lk7777_class,
     .priv_data_size = sizeof(LK7777Context),
     .flags          = AVFMT_NOGENSEARCH | AVFMT_TS_DISCONT, // TODO: what do these flags do? these are probably not good
     .read_probe     = lk7777_read_probe,
