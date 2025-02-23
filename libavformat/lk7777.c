@@ -6,6 +6,7 @@
 #define LK7777_MAGIC_1 0x47
 #define LK7777_MAGIC_2 0x74
 #define LK7777_KEY_SIZE 16
+#define LK7777_RESYNC_MAX 200000
 
 // TODO: some logs should probably be removed to avoid excessive av_log calls
 // TODO: demuxer should not crash with random input data / lost packets (test!)
@@ -32,6 +33,32 @@ static void lk7777_decrypt_packet(AVFormatContext *s, struct AVAES *aes_decrypt,
     }
 
     av_aes_crypt(aes_decrypt, pkt->data, pkt->data, sz >> 4, NULL, 1);
+}
+
+static int lk7777_sync_magic(AVFormatContext *s) {
+    int sa, sb, sc;
+    int resync = 0;
+
+    sa = avio_r8(s->pb);
+    sb = avio_r8(s->pb);
+    sc = avio_r8(s->pb);
+
+    while (sa != LK7777_MAGIC_0 || sb != LK7777_MAGIC_1 || sc != LK7777_MAGIC_2) {
+        sa = sb;
+        sb = sc;
+        sc = avio_r8(s->pb);
+        if (!resync) {
+            av_log(s, AV_LOG_WARNING, "resyncing\n");
+        } else if (resync == LK7777_RESYNC_MAX) {
+            av_log(s, AV_LOG_WARNING, "resync failed (skipped bytes: %d)\n", resync);
+            return -1;
+        }
+        resync++;
+    }
+    if (resync) {
+        av_log(s, AV_LOG_WARNING, "resync succeeded (skipped bytes: %d)\n", resync);
+    }
+    return 0;
 }
 
 typedef struct LK7777Context {
@@ -110,13 +137,13 @@ static int lk7777_read_header(AVFormatContext *s)
 static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     LK7777Context *c = s->priv_data;
-    int t, sz, ct, ret;
+    unsigned int t, sz, ct, ret;
 
     // av_log(s, AV_LOG_TRACE, "lk7777_read_packet\n");
 
-    if (avio_r8(s->pb) != LK7777_MAGIC_0) return AVERROR_BUG; // TODO: this should not be AVERROR_BUG
-    if (avio_r8(s->pb) != LK7777_MAGIC_1) return AVERROR_BUG;
-    if (avio_r8(s->pb) != LK7777_MAGIC_2) return AVERROR_BUG;
+    if (lk7777_sync_magic(s) != 0) {
+        return AVERROR_INVALIDDATA;
+    }
 
     t = avio_r8(s->pb); // packet type
     sz = avio_rb32(s->pb) - 4; // packet size
