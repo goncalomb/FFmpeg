@@ -8,10 +8,6 @@
 #define LK7777_KEY_SIZE 16
 #define LK7777_RESYNC_MAX 200000
 
-// TODO: some logs should probably be removed to avoid excessive av_log calls
-// TODO: demuxer should not crash with random input data / lost packets (test!)
-// TODO: improve sync... is fps detection good?
-
 static void lk7777_decrypt_packet(AVFormatContext *s, struct AVAES *aes_decrypt, AVPacket *pkt) {
     int sz = 1024;
 
@@ -39,6 +35,9 @@ static int lk7777_sync_magic(AVFormatContext *s) {
     int sa, sb, sc;
     int resync = 0;
 
+    // XXX: is resync really necessary? are we just losing data or bug?
+    //      some packet sizes don't appear to match (i.e. truncated)?
+
     sa = avio_r8(s->pb);
     sb = avio_r8(s->pb);
     sc = avio_r8(s->pb);
@@ -48,7 +47,7 @@ static int lk7777_sync_magic(AVFormatContext *s) {
         sb = sc;
         sc = avio_r8(s->pb);
         if (!resync) {
-            av_log(s, AV_LOG_WARNING, "resyncing\n");
+            av_log(s, AV_LOG_WARNING, "resync started\n");
         } else if (resync == LK7777_RESYNC_MAX) {
             av_log(s, AV_LOG_WARNING, "resync failed (skipped bytes: %d)\n", resync);
             return -1;
@@ -70,7 +69,7 @@ typedef struct LK7777Context {
 
 static int lk7777_read_probe(const AVProbeData *p)
 {
-    av_log(NULL, AV_LOG_TRACE, "lk7777_read_probe %d %s\n", p->buf_size, p->filename);
+    av_log(NULL, AV_LOG_TRACE, "read_probe (size: %d)\n", p->buf_size);
 
     // TODO: probe should be improved to increase score by reading more packets
     if (
@@ -91,7 +90,7 @@ static int lk7777_read_header(AVFormatContext *s)
     AVStream *stv;
     AVStream *sta;
 
-    av_log(s, AV_LOG_TRACE, "lk7777_read_header\n");
+    av_log(s, AV_LOG_TRACE, "read_header\n");
 
     // process options
     if (c->key_size != LK7777_KEY_SIZE) {
@@ -139,8 +138,6 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
     LK7777Context *c = s->priv_data;
     unsigned int t, sz, ct, ret;
 
-    // av_log(s, AV_LOG_TRACE, "lk7777_read_packet\n");
-
     if (lk7777_sync_magic(s) != 0) {
         return AVERROR_INVALIDDATA;
     }
@@ -151,7 +148,7 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
 
     switch (t) {
         case 0x00:
-            av_log(s, AV_LOG_TRACE, "video data plain %d %d\n", sz, ct);
+            av_log(s, AV_LOG_TRACE, "video packet plain (size: %u, time: %u)\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 0;
             pkt->pts = ct;
@@ -159,7 +156,7 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
             break;
 
         case 0x80:
-            av_log(s, AV_LOG_TRACE, "video data encrypted %d %d\n", sz, ct);
+            av_log(s, AV_LOG_TRACE, "video packet encrypted (size: %u, time: %u)\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 0;
             pkt->pts = ct;
@@ -168,7 +165,7 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
             break;
 
         case 0x81:
-            av_log(s, AV_LOG_TRACE, "audio data encrypted %d %d\n", sz, ct);
+            av_log(s, AV_LOG_TRACE, "audio packet encrypted (size: %u, time: %u)\n", sz, ct);
             ret = av_get_packet(s->pb, pkt, sz);
             pkt->stream_index = 1;
             pkt->pts = ct;
@@ -177,9 +174,9 @@ static int lk7777_read_packet(AVFormatContext *s, AVPacket *pkt)
             break;
 
         default:
-            av_log(s, AV_LOG_DEBUG, "unknown packet 0x%x\n", t);
-        case 0x82:
-            av_log(s, AV_LOG_DEBUG, "unknown %d %d\n", sz, ct);
+            av_log(s, AV_LOG_DEBUG, "unknown packet id 0x%x\n", t);
+        case 0x82: // XXX: what is this?
+            av_log(s, AV_LOG_DEBUG, "unknown packet (size: %u, time: %u)\n", sz, ct);
             ret = avio_skip(s->pb, sz); // just skip these bytes
             break;
     }
@@ -191,7 +188,7 @@ static int lk7777_read_close(AVFormatContext *s)
 {
     LK7777Context *c = s->priv_data;
 
-    av_log(s, AV_LOG_TRACE, "lk7777_read_close\n");
+    av_log(s, AV_LOG_TRACE, "read_close\n");
 
     // free decrypt
     av_free(c->aes_decrypt);
@@ -203,7 +200,7 @@ static int lk7777_read_seek(AVFormatContext *s, int stream_index, int64_t timest
 {
     unsigned int t, sz, ct;
 
-    av_log(s, AV_LOG_TRACE, "read_seek (stream_index: %d, timestamp: %ld, flags: %d)\n", stream_index, timestamp, flags);
+    av_log(s, AV_LOG_TRACE, "read_seek (stream: %d, time: %ld, flags: %d)\n", stream_index, timestamp, flags);
 
     // XXX: handle stream_index and flags?
     while (1) {
