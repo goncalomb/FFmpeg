@@ -201,8 +201,23 @@ static int lk7777_read_close(AVFormatContext *s)
 
 static int lk7777_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp, int flags)
 {
-    // TODO: seeking is not possible... is it? maybe if input is a udp capture
-    av_log(s, AV_LOG_TRACE, "lk7777_read_seek\n");
+    unsigned int t, sz, ct;
+
+    av_log(s, AV_LOG_TRACE, "read_seek (stream_index: %d, timestamp: %ld, flags: %d)\n", stream_index, timestamp, flags);
+
+    // XXX: handle stream_index and flags?
+    while (1) {
+        if (lk7777_sync_magic(s) != 0) {
+            return 0;
+        }
+        t = avio_r8(s->pb); // packet type
+        sz = avio_rb32(s->pb) - 4; // packet size
+        ct = avio_rb32(s->pb); // timestamp (ms)
+        avio_skip(s->pb, sz); // skip rest
+        if ((t == 0x00 || t == 0x80 || t == 0x81) && ct >= timestamp) {
+            return 1;
+        }
+    }
     return 0;
 }
 
@@ -223,10 +238,10 @@ AVInputFormat ff_lk7777_demuxer = {
     .long_name      = NULL_IF_CONFIG_SMALL("LK 7777 Streaming"),
     .priv_class     = &lk7777_class,
     .priv_data_size = sizeof(LK7777Context),
-    .flags          = AVFMT_NOGENSEARCH | AVFMT_TS_DISCONT, // TODO: what do these flags do? these are probably not good
+    .flags          = AVFMT_TS_DISCONT,
     .read_probe     = lk7777_read_probe,
     .read_header    = lk7777_read_header,
     .read_packet    = lk7777_read_packet,
     .read_close     = lk7777_read_close,
-    // .read_seek      = lk7777_read_seek, // TODO: how does seeking work?
+    .read_seek      = lk7777_read_seek,
 };
