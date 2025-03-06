@@ -653,6 +653,7 @@ TLS-OBJS-$(CONFIG_SCHANNEL)              += tls_schannel.o
 OBJS-$(CONFIG_TLS_PROTOCOL)              += tls.o $(TLS-OBJS-yes)
 OBJS-$(CONFIG_UDP_PROTOCOL)              += udp.o ip.o
 OBJS-$(CONFIG_UDPLITE_PROTOCOL)          += udp.o ip.o
+OBJS-$(CONFIG_UDPLK7777_PROTOCOL)        += udp.o ip.o
 OBJS-$(CONFIG_UNIX_PROTOCOL)             += unix.o
 
 # external library protocols

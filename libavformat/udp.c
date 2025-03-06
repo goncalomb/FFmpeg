@@ -1135,3 +1135,5 @@ const URLProtocol ff_udplite_protocol = {
     .priv_data_class     = &udplite_context_class,
     .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };
+
+#include "udplk7777.c"

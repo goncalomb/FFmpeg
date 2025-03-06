@@ -1,12 +1,7 @@
+#include "lk7777.h"
 #include "avformat.h"
 #include "libavutil/aes.h"
 #include "libavutil/opt.h"
-
-#define LK7777_MAGIC_0 0x74
-#define LK7777_MAGIC_1 0x47
-#define LK7777_MAGIC_2 0x74
-#define LK7777_KEY_SIZE 16
-#define LK7777_RESYNC_MAX 200000
 
 static void lk7777_decrypt_packet(AVFormatContext *s, struct AVAES *aes_decrypt, AVPacket *pkt) {
     int sz = 1024;
